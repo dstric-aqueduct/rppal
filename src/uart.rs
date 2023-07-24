@@ -145,7 +145,7 @@ use libc::{c_int, O_NOCTTY, O_NONBLOCK};
 use libc::{TIOCM_CAR, TIOCM_CTS, TIOCM_DSR, TIOCM_DTR, TIOCM_RNG, TIOCM_RTS};
 
 use crate::gpio::{self, Gpio, IoPin, Mode};
-use crate::system::{self, DeviceInfo, Model};
+use crate::system::{self, DeviceInfo, Model, SoC};
 
 #[cfg(feature = "hal")]
 mod hal;
@@ -162,6 +162,30 @@ const GPIO_CTS_MODE_UART0: Mode = Mode::Alt3;
 
 const GPIO_RTS_MODE_UART1: Mode = Mode::Alt5;
 const GPIO_CTS_MODE_UART1: Mode = Mode::Alt5;
+
+const GPIO_RTS_UART2: u8 = 3;
+const GPIO_CTS_UART2: u8 = 2;
+
+const GPIO_RTS_MODE_UART2: Mode = Mode::Alt4;
+const GPIO_CTS_MODE_UART2: Mode = Mode::Alt4;
+
+const GPIO_RTS_UART3: u8 = 7;
+const GPIO_CTS_UART3: u8 = 6;
+
+const GPIO_RTS_MODE_UART3: Mode = Mode::Alt4;
+const GPIO_CTS_MODE_UART3: Mode = Mode::Alt4;
+
+const GPIO_RTS_UART4: u8 = 11;
+const GPIO_CTS_UART4: u8 = 10;
+
+const GPIO_RTS_MODE_UART4: Mode = Mode::Alt4;
+const GPIO_CTS_MODE_UART4: Mode = Mode::Alt4;
+
+const GPIO_RTS_UART5: u8 = 15;
+const GPIO_CTS_UART5: u8 = 14;
+
+const GPIO_RTS_MODE_UART5: Mode = Mode::Alt4;
+const GPIO_CTS_MODE_UART5: Mode = Mode::Alt4;
 
 /// Errors that can occur when accessing the UART peripheral.
 #[derive(Debug)]
@@ -397,6 +421,16 @@ struct UartInner {
     hardware_flow_control: bool,
 }
 
+/// Enumeration for the number of Uarts avaialable on
+/// the Broadcom Soc.
+///
+/// [SoC::Bcm2711] has 6.
+/// All others have 2.
+enum NumberUarts {
+    Two,
+    Six,
+}
+
 /// Provides access to the Raspberry Pi's UART peripherals and any USB to
 /// serial adapters.
 ///
@@ -423,6 +457,15 @@ impl Uart {
         Self::with_path("/dev/serial0", baud_rate, parity, data_bits, stop_bits)
     }
 
+    /// Check how many Uarts are available.
+    fn number_uarts() -> Result<NumberUarts> {
+        if DeviceInfo::new()?.soc() == SoC::Bcm2711 {
+            Ok(NumberUarts::Six)
+        } else {
+            Ok(NumberUarts::Two)
+        }
+    }
+
     /// Constructs a new `Uart` connected to the serial character device
     /// specified by `path`.
     ///
@@ -446,10 +489,24 @@ impl Uart {
 
         // Check if we're using /dev/ttyAMA0 or /dev/ttyS0 so we can set the
         // correct RTS/CTS pin modes when needed.
+        //
+        // If the SoC has 6 Uarts, allow /dev/ttyAMA[n], n[1..4), for Uart2..Uart6
         let rtscts_mode = if let Some(path_str) = path.to_str() {
-            match path_str {
-                "/dev/ttyAMA0" => Some((GPIO_RTS_MODE_UART0, GPIO_CTS_MODE_UART0)),
-                "/dev/ttyS0" => Some((GPIO_RTS_MODE_UART1, GPIO_CTS_MODE_UART1)),
+            match (path_str, Self::number_uarts()?) {
+                ("/dev/ttyAMA0", _) => Some((GPIO_RTS_MODE_UART0, GPIO_CTS_MODE_UART0)),
+                ("/dev/ttyS0", _) => Some((GPIO_RTS_MODE_UART1, GPIO_CTS_MODE_UART1)),
+                ("/dev/ttyAMA1", NumberUarts::Six) => {
+                    Some((GPIO_RTS_MODE_UART2, GPIO_CTS_MODE_UART2))
+                }
+                ("/dev/ttyAMA2", NumberUarts::Six) => {
+                    Some((GPIO_RTS_MODE_UART3, GPIO_CTS_MODE_UART3))
+                }
+                ("/dev/ttyAMA3", NumberUarts::Six) => {
+                    Some((GPIO_RTS_MODE_UART4, GPIO_CTS_MODE_UART4))
+                }
+                ("/dev/ttyAMA4", NumberUarts::Six) => {
+                    Some((GPIO_RTS_MODE_UART5, GPIO_CTS_MODE_UART5))
+                }
                 _ => None,
             }
         } else {
